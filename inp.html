@@ -1,0 +1,755 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>いぬっピー</title>
+<style>
+:root{
+  --bg:#fff4db;      /* 薄いクリーム（左右余白） */
+  --panel:#ffffff;
+  --panel2:#fff8e9;
+  --historyBg:#eaf6ff; /* ← 過去10回の背景色（変更） */
+  --ink:#2b2b2b;
+  --muted:#6b6b6b;
+  --good:#1f9d63;
+  --bad:#d65a5a;
+  --line:rgba(0,0,0,.10);
+  --shadow:rgba(0,0,0,.15);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  background:var(--bg);
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Hiragino Kaku Gothic ProN","Noto Sans JP","Meiryo", sans-serif;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  height:100vh;
+  overflow:hidden;
+  user-select:none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  padding:16px; /* PCでも周りは背景色 */
+}
+
+/* スマホ固定（全体=ゲーム+履歴）高さ900px以内 */
+.phone{
+  width:390px;
+  height:880px;               /* <= 900 */
+  background:var(--panel);
+  border-radius:22px;
+  box-shadow:0 20px 60px var(--shadow);
+  border:1px solid var(--line);
+  position:relative;
+  overflow:hidden;
+}
+
+/* 上部 */
+.titlebar{
+  position:absolute;
+  top:0; left:0; right:0;
+  padding:14px 14px 10px;
+  background:linear-gradient(180deg, rgba(255,255,255,.92), rgba(255,255,255,0));
+  z-index:3;
+}
+.title{
+  font-weight:950;
+  font-size:16px;
+  letter-spacing:.2px;
+}
+.toprow{
+  display:flex;
+  justify-content:space-between;
+  margin-top:6px;
+  font-weight:950;
+  font-size:14px;
+}
+.toprow small{
+  color:rgba(0,0,0,.55);
+  font-weight:900;
+}
+
+/* メイン（履歴分を除いた“ゲーム画面”） */
+.stage{
+  position:absolute;
+  top:80px;
+  left:0; right:0;
+  bottom:200px;     /* 下履歴ぶん確保 */
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:flex-start;
+  gap:12px;
+  padding:0 14px;
+}
+
+.dog-area{
+  position:relative;
+  width:100%;
+  height:270px;
+  display:flex;
+  justify-content:center;   /* ← センター */
+  align-items:center;       /* ← センター */
+}
+
+/* キャラ（解像度UP） */
+canvas{
+  width:320px;
+  height:260px;
+  image-rendering:pixelated;
+  filter: drop-shadow(0 14px 0 rgba(0,0,0,.10));
+}
+
+/* 吹き出し（150%） */
+.bubble{
+  position:absolute;
+  top:-12px;
+  left:50%;
+  transform:translateX(-50%);
+  background:rgba(255,255,255,.92);
+  padding:18px 24px;
+  border-radius:20px;
+  font-weight:950;
+  border:1px solid var(--line);
+  box-shadow:0 12px 34px rgba(0,0,0,.10);
+  min-width:210px;
+  text-align:center;
+  white-space:nowrap;
+  transition: opacity .14s ease, transform .14s ease;
+  z-index:2;
+}
+.bubble:after{
+  content:"";
+  position:absolute;
+  left:50%;
+  bottom:-14px;
+  transform: translateX(-50%);
+  border-width:14px 14px 0 14px;
+  border-style:solid;
+  border-color: rgba(255,255,255,.92) transparent transparent transparent;
+  filter: drop-shadow(0 2px 0 rgba(0,0,0,.06));
+}
+.bubble.hidden{
+  opacity:0;
+  transform:translateX(-50%) translateY(-10px);
+  pointer-events:none;
+}
+.bubble.muted{ opacity:.75; }
+
+/* タップ部 */
+.tapArea{
+  width:100%;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:10px;
+}
+
+/* 獲得点表示：ボタン上 */
+.gain{
+  height:24px;
+  font-weight:950;
+  opacity:0;
+  transition:.2s;
+  letter-spacing:.2px;
+}
+.gain.show{opacity:1; transform:translateY(-2px)}
+.gain.good{color:var(--good)}
+.gain.bad{color:var(--bad)}
+
+/* タップ回数表示：ボタン上 */
+.tapEcho{
+  min-height:30px;
+  font-weight:950;
+  letter-spacing:.3px;
+  color: rgba(0,0,0,.68);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width: min(340px, 100%);
+}
+.tapEcho .wan{
+  display:inline-block;
+  padding:7px 12px;
+  border-radius:14px;
+  background: rgba(255,255,255,.82);
+  border:1px solid var(--line);
+  box-shadow: 0 8px 20px rgba(0,0,0,.06);
+  max-width:100%;
+  overflow:hidden;
+  text-overflow: ellipsis;
+  white-space:nowrap;
+}
+
+.panel{
+  width:340px;
+  background:var(--panel2);
+  border-radius:16px;
+  padding:10px 12px;
+  border:1px solid var(--line);
+  text-align:center;
+  font-size:13px;
+  font-weight:850;
+  color: rgba(0,0,0,.66);
+  box-shadow: 0 12px 30px rgba(0,0,0,.07);
+}
+.panel strong{ color:#7a5a00; }
+
+/* タップボタン */
+.big{
+  width:340px;
+  padding:14px;
+  border-radius:16px;
+  background: linear-gradient(180deg, rgba(255,204,51,.28), rgba(255,204,51,.12));
+  border:1px solid rgba(255,204,51,.45);
+  font-weight:950;
+  text-align:center;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  letter-spacing:.2px;
+  box-shadow: 0 10px 26px rgba(0,0,0,.08);
+}
+
+/* 下部履歴（スクロール可） */
+.bottomHistory{
+  position:absolute;
+  bottom:0; left:0; right:0;
+  height:200px;
+  background: var(--historyBg); /* ← 背景色変更 */
+  border-top:1px solid var(--line);
+  padding:10px 12px 12px;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  z-index:2;
+}
+.bottomHistory h3{
+  font-size:12px;
+  margin:0;
+  font-weight:950;
+  letter-spacing:.2px;
+  color: rgba(0,0,0,.55);
+}
+.histRows{
+  overflow-y:auto;
+  flex:1;
+  padding-right:6px;
+}
+.histRow{
+  background:rgba(255,255,255,.86);
+  border:1px solid var(--line);
+  border-radius:14px;
+  padding:10px 12px;
+  margin-bottom:8px;
+  font-weight:950;
+  display:flex;
+  justify-content:space-between;
+  font-size:13px;
+  box-shadow: 0 6px 14px rgba(0,0,0,.05);
+}
+.histRow small{
+  color: rgba(0,0,0,.50);
+  font-weight:900;
+}
+
+/* ゲーム終了を分かりやすく（オーバーレイ） */
+.endOverlay{
+  position:absolute;
+  inset:0;
+  background: rgba(255,244,219,.78);
+  backdrop-filter: blur(3px);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  opacity:0;
+  pointer-events:none;
+  transition: opacity .18s ease;
+  z-index:4;
+}
+.endOverlay.show{
+  opacity:1;
+  pointer-events:auto;
+}
+.endCard{
+  width: min(340px, 92%);
+  border-radius:18px;
+  background: rgba(255,255,255,.92);
+  border:1px solid var(--line);
+  box-shadow: 0 20px 60px rgba(0,0,0,.18);
+  padding:16px 16px 14px;
+  text-align:center;
+}
+.endCard h2{
+  margin:0 0 8px;
+  font-size:18px;
+  letter-spacing:.2px;
+  font-weight:950;
+}
+.endScore{
+  font-size:32px;
+  font-weight:980;
+  letter-spacing:.4px;
+  margin:6px 0 10px;
+}
+.endHint{
+  margin:0;
+  color: rgba(0,0,0,.55);
+  font-weight:900;
+  font-size:13px;
+  line-height:1.35;
+}
+
+/* クリック/タップ受け */
+.taplayer{
+  position:absolute;
+  inset:0;
+  z-index:1;
+  cursor:pointer;
+}
+</style>
+</head>
+<body>
+<div class="phone" id="phone">
+  <div class="titlebar">
+    <div class="title">僕はいぬっピー、一緒にお話ししよう</div>
+    <div class="toprow">
+      <div><small>のこり</small> <span id="time">2:30</span></div>
+      <div><small>スコア</small> <span id="score">0</span></div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="dog-area">
+      <div class="bubble muted" id="bubble">ワン</div>
+      <canvas id="dog" width="400" height="320" aria-label="いぬっピー"></canvas>
+    </div>
+
+    <div class="tapArea">
+      <div class="gain" id="gain"></div>
+      <div class="tapEcho" id="tapEcho" aria-live="polite"></div>
+
+      <div class="panel">
+        吹き出しの <strong>ワン</strong> の数だけタップ。<br>
+        ぴったりでも、ちょい待って確定。押しすぎ注意。
+      </div>
+
+      <div class="big" id="big">タップしてスタート</div>
+    </div>
+  </div>
+
+  <div class="bottomHistory" aria-label="過去10回のスコア">
+    <h3>過去10回（このブラウザを閉じるまで）</h3>
+    <div class="histRows" id="historyRows"></div>
+  </div>
+
+  <div class="endOverlay" id="endOverlay" aria-hidden="true">
+    <div class="endCard">
+      <h2>おわり！</h2>
+      <div class="endScore" id="endScore">0</div>
+      <p class="endHint">タップ / Space でもう一回<br>（履歴は下に残ります）</p>
+    </div>
+  </div>
+
+  <div class="taplayer" id="taplayer" aria-hidden="true"></div>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+
+  const c = $('dog');
+  const ctx = c.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+
+  const bubble = $('bubble');
+  const scoreEl = $('score');
+  const timeEl = $('time');
+  const gainEl = $('gain');
+  const tapEcho = $('tapEcho');
+  const historyRows = $('historyRows');
+  const taplayer = $('taplayer');
+
+  const endOverlay = $('endOverlay');
+  const endScore = $('endScore');
+
+  // ====== 履歴（閉じるまで） ======
+  const history = [];
+  function renderHistory(){
+    historyRows.innerHTML = '';
+    if(history.length === 0){
+      const row = document.createElement('div');
+      row.className = 'histRow';
+      row.innerHTML = `<small>—</small><span>—</span>`;
+      historyRows.appendChild(row);
+      return;
+    }
+    const max = Math.max(...history);
+    history.slice().reverse().forEach((s, i) => {
+      const row = document.createElement('div');
+      row.className = 'histRow';
+      const isMax = (s === max);
+      row.innerHTML = `<small>#${history.length - i}</small><span>${isMax ? '👑 ' : ''}${s}</span>`;
+      historyRows.appendChild(row);
+    });
+  }
+  renderHistory();
+
+  // ====== ゲーム状態 ======
+  const GAME_SECONDS = 150;
+  const S = {
+    phase: 'title', // title | play | result
+    score: 0,
+    time: GAME_SECONDS,
+    timer: null,
+
+    target: 0,
+    inputs: 0,
+    allowInput: false,
+    lockedUntil: 0,
+    confirmTimer: null,
+    dogState: 'idle', // idle | bark | good | bad
+    roundPending: false,
+  };
+
+  function fmtTime(sec){
+    const m = Math.floor(sec/60);
+    const s = sec % 60;
+    return `${m}:${String(s).padStart(2,'0')}`;
+  }
+
+  function showGain(text, kind){
+    gainEl.textContent = text;
+    gainEl.className = `gain ${kind} show`;
+    setTimeout(() => gainEl.classList.remove('show'), 650);
+  }
+
+  function setBubbleWan(n, muted=false){
+    bubble.textContent = 'ワン'.repeat(n);
+    bubble.classList.toggle('muted', muted);
+    bubble.classList.remove('hidden');
+  }
+  function hideBubble(){
+    bubble.classList.add('hidden');
+  }
+
+  function setDogState(s){ S.dogState = s; }
+
+  // ====== キャラクターデザイン（前のデザインに戻す） ======
+  function drawDog(state){
+    const w = c.width, h = c.height;
+    ctx.clearRect(0,0,w,h);
+
+    // ふわふわ
+    const t = performance.now();
+    const floatY = Math.round(Math.sin(t/260) * 2);
+    const popY   = (state === 'good') ? Math.round(Math.sin(t/90)*3) : 0;
+    const oy = floatY - popY;
+
+    // 背景ドット
+    for(let i=0;i<220;i++){
+      const x = (i*37)%w;
+      const y = (i*61)%h;
+      ctx.fillStyle = 'rgba(0,0,0,0.03)';
+      ctx.fillRect(x, y, 1, 1);
+    }
+
+    const px = 5;
+    function rect(x,y,ww,hh,color){
+      ctx.fillStyle = color;
+      ctx.fillRect(x*px, (y+oy)*px, ww*px, hh*px);
+    }
+
+    const fur1 = '#caa36a';
+    const fur2 = '#b38d58';
+    const dark = '#3a2b1d';
+    const ink  = '#111318';
+    const white= '#f3f0e9';
+    const blush= '#ff7aa2';
+    const acc  = '#ffcc33';
+
+    // 影
+    rect(16, 50, 34, 6, 'rgba(0,0,0,0.12)');
+
+    // からだ
+    rect(20, 32, 26, 15, fur1);
+    rect(20, 32, 26, 2, fur2);
+    rect(20, 45, 26, 2, fur2);
+
+    // あたま
+    rect(18, 22, 11, 11, fur1);
+    rect(29, 18, 15, 15, fur1);
+    rect(29, 18, 15, 2, fur2);
+    rect(29, 31, 15, 2, fur2);
+
+    // 耳
+    rect(27, 18, 4, 7, fur2);
+    rect(44, 18, 4, 7, fur2);
+
+    // 目
+    rect(33, 23, 2, 2, ink);
+    rect(39, 23, 2, 2, ink);
+
+    // ほっぺ（成功時ちょい）
+    if(state === 'good'){
+      rect(31, 27, 2, 1, blush);
+      rect(41, 27, 2, 1, blush);
+    }
+
+    // 口
+    if(state === 'bark'){
+      rect(36, 27, 2, 1, dark);
+      rect(35, 28, 4, 3, dark);
+      rect(36, 29, 2, 1, acc);
+    } else if(state === 'bad'){
+      rect(35, 28, 6, 1, dark);
+      rect(36, 29, 4, 1, dark);
+    } else {
+      rect(36, 28, 2, 1, dark);
+      rect(35, 29, 4, 1, dark);
+    }
+
+    // 鼻
+    rect(37, 26, 2, 1, ink);
+
+    // おなか
+    rect(26, 37, 12, 8, white);
+
+    // 前足
+    rect(22, 47, 6, 5, fur2);
+    rect(36, 47, 6, 5, fur2);
+
+    // しっぽ（ふりふり）
+    const wag = Math.round(Math.sin(t/200) * 1);
+    rect(46+wag, 36, 6, 2, fur2);
+    rect(50+wag, 34, 2, 2, fur2);
+
+    // 影ライン
+    rect(19, 32, 1, 15, 'rgba(0,0,0,0.10)');
+    rect(45, 32, 1, 15, 'rgba(0,0,0,0.10)');
+  }
+
+  function loop(){
+    drawDog(S.dogState);
+    requestAnimationFrame(loop);
+  }
+  loop();
+
+  // ====== ラウンド制御 ======
+  function targetByTime(){
+    const elapsed = GAME_SECONDS - S.time;
+    let weights;
+    if(elapsed < 50)       weights = [0.45,0.33,0.18,0.04,0.00];
+    else if(elapsed < 100) weights = [0.12,0.28,0.30,0.20,0.10];
+    else                   weights = [0.08,0.14,0.26,0.28,0.24];
+    const r = Math.random();
+    let acc = 0;
+    for(let i=0;i<weights.length;i++){
+      acc += weights[i];
+      if(r <= acc) return i+1;
+    }
+    return 3;
+  }
+
+  function barkAnim(n, done){
+    let i = 0;
+    const interval = 170;
+    const step = () => {
+      if(S.phase !== 'play') return;
+      setDogState('bark');
+      setTimeout(() => setDogState('idle'), 90);
+
+      i++;
+      if(i >= n){
+        setTimeout(() => { setDogState('idle'); done(); }, 140);
+        return;
+      }
+      setTimeout(step, interval);
+    };
+    step();
+  }
+
+  function renderTapEcho(){
+    if(S.inputs <= 0){
+      tapEcho.innerHTML = '';
+      return;
+    }
+    const txt = 'ワン'.repeat(S.inputs);
+    tapEcho.innerHTML = `<span class="wan">${txt}</span>`;
+    const node = tapEcho.firstElementChild;
+    if(node && S.inputs >= 6){
+      node.style.fontSize = '12px';
+      node.style.letterSpacing = '0px';
+    }
+  }
+
+  function nextRound(delayMs){
+    if(S.phase !== 'play') return;
+    if(S.roundPending) return;
+    S.roundPending = true;
+
+    setTimeout(() => {
+      S.roundPending = false;
+      if(S.phase !== 'play') return;
+
+      S.target = targetByTime();
+      S.inputs = 0;
+      S.allowInput = false;
+      renderTapEcho();
+      gainEl.classList.remove('show');
+
+      setBubbleWan(S.target, false);
+
+      barkAnim(S.target, () => {
+        S.lockedUntil = performance.now() + 250;
+        S.allowInput = true;
+
+        // 吹き出しは「1回ごとに消える」＋表示時間は0.5秒長く（=1180ms）
+        setTimeout(() => hideBubble(), 1180);
+      });
+    }, delayMs);
+  }
+
+  function startGame(){
+    endOverlay.classList.remove('show');
+    endOverlay.setAttribute('aria-hidden','true');
+
+    S.phase = 'play';
+    S.score = 0;
+    scoreEl.textContent = '0';
+    S.time = GAME_SECONDS;
+    timeEl.textContent = fmtTime(S.time);
+
+    $('big').textContent = 'ワンの数だけタップ';
+    tapEcho.innerHTML = '';
+    gainEl.textContent = '';
+    gainEl.classList.remove('show');
+
+    setDogState('idle');
+    setBubbleWan(1, true);
+
+    if(S.timer) clearInterval(S.timer);
+    S.timer = setInterval(() => {
+      if(S.phase !== 'play') return;
+      S.time = Math.max(0, S.time - 1);
+      timeEl.textContent = fmtTime(S.time);
+      if(S.time <= 0){
+        endGame();
+      }
+    }, 1000);
+
+    nextRound(250);
+  }
+
+  function endGame(){
+    if(S.phase !== 'play') return;
+    S.phase = 'result';
+
+    if(S.timer) { clearInterval(S.timer); S.timer = null; }
+    if(S.confirmTimer){ clearTimeout(S.confirmTimer); S.confirmTimer = null; }
+
+    history.push(S.score);
+    while(history.length > 10) history.shift();
+    renderHistory();
+
+    setDogState('idle');
+    setBubbleWan(1, true);
+    hideBubble();
+    tapEcho.innerHTML = '';
+    $('big').textContent = '';
+
+    // 終了を分かりやすく
+    endScore.textContent = String(S.score);
+    endOverlay.classList.add('show');
+    endOverlay.setAttribute('aria-hidden','false');
+  }
+
+  function succeedRound(){
+    if(S.phase !== 'play') return;
+
+    const base = S.target * 100;
+    const add = base; // シンプルに
+    S.score += add;
+    scoreEl.textContent = String(S.score);
+
+    setDogState('good');
+    showGain(`+${add}`, 'good');
+
+    // ✅「回答してから次のワンワンが出るまでもう一拍待つ」
+    // ここを長めに（見た目の余韻）
+    setTimeout(() => setDogState('idle'), 260);
+    nextRound(900); // ← もう一拍（長め）
+  }
+
+  function failRound(){
+    if(S.phase !== 'play') return;
+    if(S.confirmTimer){ clearTimeout(S.confirmTimer); S.confirmTimer = null; }
+
+    setDogState('bad');
+    showGain('0', 'bad');
+
+    setTimeout(() => setDogState('idle'), 280);
+    nextRound(950); // ← 失敗時も余韻
+  }
+
+  function onInput(){
+    if(S.phase === 'title' || S.phase === 'result'){
+      startGame();
+      return;
+    }
+    if(S.phase !== 'play') return;
+    if(!S.allowInput) return;
+
+    const now = performance.now();
+    if(now < S.lockedUntil) return;
+
+    S.inputs += 1;
+    renderTapEcho();
+
+    if(S.inputs > S.target){
+      failRound();
+      return;
+    }
+
+    if(S.inputs === S.target){
+      // 「一拍おかないと確定しない」
+      if(S.confirmTimer) clearTimeout(S.confirmTimer);
+      $('big').textContent = '…';
+      S.confirmTimer = setTimeout(() => {
+        S.confirmTimer = null;
+        $('big').textContent = 'ワンの数だけタップ';
+        succeedRound();
+      }, 350);
+    }
+  }
+
+  // 初期表示
+  setBubbleWan(1, true);
+  $('big').textContent = 'タップしてスタート';
+
+  // 入力
+  taplayer.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    onInput();
+  }, {passive:false});
+
+  window.addEventListener('keydown', (e) => {
+    if(e.code === 'Space'){
+      e.preventDefault();
+      onInput();
+    }
+  }, {passive:false});
+
+  // 終了オーバーレイをクリックで再開
+  endOverlay.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    startGame();
+  }, {passive:false});
+
+  window.addEventListener('touchmove', (e) => e.preventDefault(), {passive:false});
+})();
+</script>
+</body>
+</html>
